@@ -10,6 +10,62 @@ def get_curtop_curbot(group):
     group['curbot'] = group['Low'].cummin()
     return group
 
+def calculate_first5(group):
+    # Filter the group to include only the first 5 minutes (09:15 to 09:19)
+    first5_group = group.between_time('09:15', '09:19')
+    
+    # Check if first5_group is not empty
+    if not first5_group.empty:
+        # Calculate first5_open, first5_high, first5_low, and first5_close
+        first5_open = first5_group['Open'].iloc[0]
+        first5_high = first5_group['High'].max()
+        first5_low = first5_group['Low'].min()
+        first5_close = first5_group['Close'].iloc[-1]
+        
+        first5_stats = pd.DataFrame({
+            'first5_open': [first5_open],
+            'first5_high': [first5_high],
+            'first5_low': [first5_low],
+            'first5_close': [first5_close]
+        }, index=group.index[:1])  # Set the index to the first index of the group
+        
+        # Get the previous day's high value
+        prevday_high = group['prevday_high'].iloc[0]
+        
+        # Calculate openconviction_5
+        first5_stats['openconviction_5'] = calculate_openconviction(first5_stats, prevday_high)
+        
+        # Add the first5 statistics to the group DataFrame
+        group = group.join(first5_stats)
+        
+        # Forward-fill the first5 statistics for the rest of the day
+        group['first5_open'] = group['first5_open'].ffill()
+        group['first5_high'] = group['first5_high'].ffill()
+        group['first5_low'] = group['first5_low'].ffill()
+        group['first5_close'] = group['first5_close'].ffill()
+        group['openconviction_5'] = group['openconviction_5'].ffill()
+    
+    return group
+
+def calculate_openconviction(first5_stats, prevday_high):
+    openconviction = []
+    for _, row in first5_stats.iterrows():
+        buying_od_5 = (row['first5_open'] == row['first5_low']) and (row['first5_close'] >= ((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low']) and (row['first5_close'] > row['first5_open'])
+        buying_otd_5 = (row['first5_open'] != row['first5_low']) and (row['first5_close'] >= (((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low'])) and (row['first5_close'] > row['first5_open']) and (pd.notna(prevday_high) and row['first5_low'] > prevday_high * 0.999)
+        selling_orr_5 = (row['first5_close'] >= ((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low']) and (row['first5_open'] < row['first5_close'])
+        
+        if buying_od_5:
+            openconviction.append(1)
+        elif buying_otd_5:
+            openconviction.append(2)
+        elif selling_orr_5:
+            openconviction.append(6)
+        else:
+            openconviction.append(7)
+    
+    return openconviction
+
+
 #def calculate_initial_balance(group):
     # Filter the group to include only the first 60 minutes (09:15 to 10:14)
     ib_group = group.between_time('09:15', '10:14')
@@ -119,9 +175,6 @@ daily_df = df.resample('D').agg({
     'Volume': 'sum'
 })
 
-# Add the previous day's high value to the df DataFrame
-# df['prevday_high'] = daily_df['High'].shift(1)
-
 # Changing datetime as index to column
 df = df.reset_index()
 
@@ -133,9 +186,6 @@ daily_df = daily_df.reset_index()
 
 # Convert the datetime column to datetime format
 daily_df['datetime'] = pd.to_datetime(daily_df['datetime'])
-
-# Set the datetime column as the index again
-# daily_df = daily_df.set_index('datetime')
 
 # Remove the nan
 daily_df = daily_df.dropna()
@@ -167,69 +217,89 @@ print(df.shape)
 # Reset the index
 df = df.reset_index(level=0, drop=True)
 
-def calculate_first5(group):
-    # Filter the group to include only the first 5 minutes (09:15 to 09:19)
-    first5_group = group.between_time('09:15', '09:19')
-    
-    # Check if first5_group is not empty
-    if not first5_group.empty:
-        # Calculate first5_open, first5_high, first5_low, and first5_close
-        first5_open = first5_group['Open'].iloc[0]
-        first5_high = first5_group['High'].max()
-        first5_low = first5_group['Low'].min()
-        first5_close = first5_group['Close'].iloc[-1]
-        
-        first5_stats = pd.DataFrame({
-            'first5_open': [first5_open],
-            'first5_high': [first5_high],
-            'first5_low': [first5_low],
-            'first5_close': [first5_close]
-        }, index=group.index[:1])  # Set the index to the first index of the group
-        
-        # Get the previous day's high value
-        prevday_high = group['prevday_high'].iloc[0]
-        
-        # Calculate openconviction_5
-        first5_stats['openconviction_5'] = calculate_openconviction(first5_stats, prevday_high)
-        
-        # Add the first5 statistics to the group DataFrame
-        group = group.join(first5_stats)
-        
-        # Forward-fill the first5 statistics for the rest of the day
-        group['first5_open'] = group['first5_open'].ffill()
-        group['first5_high'] = group['first5_high'].ffill()
-        group['first5_low'] = group['first5_low'].ffill()
-        group['first5_close'] = group['first5_close'].ffill()
-        group['openconviction_5'] = group['openconviction_5'].ffill()
-    
-    return group
-
-def calculate_openconviction(first5_stats, prevday_high):
-    openconviction = []
-    for _, row in first5_stats.iterrows():
-        buying_od_5 = (row['first5_open'] == row['first5_low']) and (row['first5_close'] >= ((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low']) and (row['first5_close'] > row['first5_open'])
-        buying_otd_5 = (row['first5_open'] != row['first5_low']) and (row['first5_close'] >= (((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low'])) and (row['first5_close'] > row['first5_open']) and (pd.notna(prevday_high) and row['first5_low'] > prevday_high * 0.999)
-        selling_orr_5 = (row['first5_close'] >= ((row['first5_high'] - row['first5_low']) * 0.5) + row['first5_low']) and (row['first5_open'] < row['first5_close'])
-        
-        if buying_od_5:
-            openconviction.append(1)
-        elif buying_otd_5:
-            openconviction.append(2)
-        elif selling_orr_5:
-            openconviction.append(6)
-        else:
-            openconviction.append(7)
-    
-    return openconviction
-
 # Apply the calculate_first5 function to each day
 df = df.groupby(df.index.date).apply(calculate_first5)
+df = df.reset_index(level=0, drop=True)
+
+# Create a new column 'trade_active' and initialize it with 0
+df['trade_active'] = 0
+
+# Initializing the target and sl levels
+df['buy_price'] = 99999
+df['tp_price'] = 99999
+df['trail_activation_price'] = 99999
+df['sl_price'] = 0
+df['trail_sl_price'] = 0
+df['sell'] = 0
+
+# Modify the buy signal calculation
+df['buy'] = np.where(
+    (df['openconviction_5'] == 7) &
+    (df['ibrange/atr'] >= 1.25) &
+    (df['Low'] == df['curbot']) &
+    (df.index.time > pd.Timestamp('09:19').time()) &
+    (df.index.time <= pd.Timestamp('10:14').time()) &
+    (~df['trade_active']),  # Add this condition to check if the buy signal has already been triggered
+    1,
+    0
+)
+
+df['trade_active'] = np.where(df['buy'] == 1, 1, np.where(df['sell'] == 1, 0, np.where((df['buy'] == 0) & (df['sell'] == 0) & (df['trade_active'].shift(1) == 1), 1, 0)))
+
+
+df['buy_price'] = np.where(df['buy'] == 1, df['curtop'] - 1.25 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['buy_price'].shift(1), 99999))
+df['sl_price'] = np.where(df['buy'] == 1, df['curtop'] - 1.4 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['sl_price'].shift(1), 0))
+df['tp_price'] = np.where(df['buy'] == 1, df['curbot'] + 0.75 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['tp_price'].shift(1), 99999))
+
+# Update the 'trade_active' column based on the 'buy' and 'sell' signals
+# df.loc[df['buy'] == 1, 'trade_active'] = 1  # Set 'trade_active' to 1 when 'buy' is 1
+# df['trade_active'] = df['trade_active'].ffill()  # Forward-fill the 'trade_active' values
+# df.loc[df['sell'] == 1, 'trade_active'] = 0  # Reset 'trade_active' to 0 when 'sell' is 1
+
+df['trail_activated'] = np.where(
+    (df['High'] >= df['trail_activation_price']) &
+    (df['buy'] != 1) &
+    (df['trade_active']== 1),
+    1,
+    0
+)
+
+df['trail_activation_price'] = \
+np.where((df['buy'] == 1), df['curtop'] - 0.95 * df['ATR'],
+    np.where((df['trade_active'] == 1) & (df['trail_activated'] == 0), df['trail_activation_price'].shift(1),
+        np.where((df['trade_active'] == 1) & (df['trail_activated'] == 1) & (df['High'] >= 1.002 * df['trail_activation_price']), 1.002 * df['trail_activation_price'], 
+            99999
+        )
+    )
+)   
+
+df['trail_sl_price'] = \
+np.where(df['buy'] == 1, df['curtop'] - 1.05 * df['ATR'],
+    np.where((df['trade_active'] == 1) & (df['trail_activated'] == 0), df['trail_sl_price'].shift(1),
+        np.where((df['trade_active'] == 1) & (df['trail_activated'] == 1) & (df['High'] >= 1.002 * df['trail_activation_price']), df['trail_sl_price'] + 0.002 * df['trail_activation_price'], 
+        0
+        )
+    )
+)  
+
+df['sl_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['Low'] <= df['sl_price']), 1, 0)
+df['tp_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['High'] >= df['tp_price']), 1, 0)
+df['trail_sl_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['trail_activated'] == 1) & (df['Low'] <= df['trail_sl_price']), 1, 0)
+df['day_end_reached'] = np.where((df.index.time >= pd.Timestamp('15:15').time()) & (df['trade_active'] == 1), 1, 0)
+
+df['sell'] = np.where((df['sl_hit'] == 1) | (df['tp_hit'] == 1) | (df['trail_sl_hit'] == 1) | (df['day_end_reached'] == 1), 1, 0)
+df['sell_price'] = np.where((df['sell'] == 1) & (df['sl_hit'] == 1), df['sl_price'],
+                    np.where((df['sell'] == 1) & (df['tp_hit'] == 1), df['tp_price'],
+                        np.where((df['sell'] == 1) & (df['trail_sl_hit'] == 1), df['trail_sl_price'],
+                            np.where((df['sell'] == 1) & (df['day_end_reached'] == 1), df['Close'], 0))))
+
+
+# Reset 'trade_active' to 0 for all rows after the sell signal
+# sell_signal_rows = df.loc[df['sell'] == 1].index
+# df.loc[sell_signal_rows.shift(-1):, 'trade_active'] = 0
 
 daily_df.to_csv('./data/daily_df.csv')
 df.to_csv('./data/df.csv')
-
-#print(df['IB_high'].tail())
-#df[['IB_high']].to_csv('./data/IB_high.csv')
 
 
 
