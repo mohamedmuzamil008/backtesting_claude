@@ -220,6 +220,10 @@ df = df.reset_index(level=0, drop=True)
 # Apply the calculate_first5 function to each day
 df = df.groupby(df.index.date).apply(calculate_first5)
 df = df.reset_index(level=0, drop=True)
+df = df.reset_index(drop=False)
+
+df['datetime'] = pd.to_datetime(df['datetime'])
+df['time'] = df['datetime'].dt.time
 
 # Create a new column 'trade_active' and initialize it with 0
 df['trade_active'] = 0
@@ -227,76 +231,95 @@ df['trade_active'] = 0
 # Initializing the target and sl levels
 df['buy_price'] = 99999
 df['tp_price'] = 99999
+df['trail_activated'] = 0
 df['trail_activation_price'] = 99999
 df['sl_price'] = 0
 df['trail_sl_price'] = 0
+df['buy'] = 0
 df['sell'] = 0
 
-# Modify the buy signal calculation
-df['buy'] = np.where(
-    (df['openconviction_5'] == 7) &
-    (df['ibrange/atr'] >= 1.25) &
-    (df['Low'] == df['curbot']) &
-    (df.index.time > pd.Timestamp('09:19').time()) &
-    (df.index.time <= pd.Timestamp('10:14').time()) &
-    (~df['trade_active']),  # Add this condition to check if the buy signal has already been triggered
-    1,
+
+for i in range(1, len(df)):
+    
+    if i % 10000 == 0:
+         print(i)
+
+    # Buy signal calculation
+    df.loc[i, 'buy'] = 1 \
+    if df.loc[i, 'openconviction_5'] == 7 and \
+    df.loc[i, 'ibrange/atr'] >= 1.25 and \
+    df.loc[i, 'Low'] == df.loc[i, 'curbot'] and \
+    df.loc[i, 'time'] > pd.Timestamp('09:19').time() and \
+    df.loc[i, 'time'] <= pd.Timestamp('10:14').time() and \
+    df.loc[i-1, 'trade_active'] == 0 \
+    else 0
+
+    # Trade active signal
+    df.loc[i, 'trade_active'] = 1 if df.loc[i, 'buy'] == 1 else \
+    0 if df.loc[i-1, 'sell'] == 1 else \
+    1 if (df.loc[i, 'buy'] == 0) & (df.loc[i-1, 'trade_active'] == 1) else \
     0
-)
 
-df['trade_active'] = np.where(df['buy'] == 1, 1, np.where(df['sell'] == 1, 0, np.where((df['buy'] == 0) & (df['sell'] == 0) & (df['trade_active'].shift(1) == 1), 1, 0)))
+    # Buy price calculation
+    df.loc[i, 'buy_price'] = df.loc[i, 'curtop'] - 1.25 * df.loc[i, 'ATR'] if df.loc[i, 'buy'] == 1 else \
+                         df.loc[i-1, 'buy_price'] if (df.loc[i, 'buy'] == 0) & (df.loc[i, 'trade_active'] == 1) else \
+                         99999
+    
+    # Stop loss price calculation
+    df.loc[i, 'sl_price'] = df.loc[i, 'curtop'] - 1.4 * df.loc[i, 'ATR'] if df.loc[i, 'buy'] == 1 else \
+                        df.loc[i-1,'sl_price'] if (df.loc[i, 'buy'] == 0) & (df.loc[i, 'trade_active'] == 1) else \
+                        0
+    
 
+    # Target price calculation
+    df.loc[i, 'tp_price'] = df.loc[i, 'curbot'] + 0.75 * df.loc[i, 'ATR'] if df.loc[i, 'buy'] == 1 else \
+                            df.loc[i-1, 'tp_price'] if (df.loc[i, 'buy'] == 0) & (df.loc[i, 'trade_active'] == 1) else \
+                            99999
+    
 
-df['buy_price'] = np.where(df['buy'] == 1, df['curtop'] - 1.25 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['buy_price'].shift(1), 99999))
-df['sl_price'] = np.where(df['buy'] == 1, df['curtop'] - 1.4 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['sl_price'].shift(1), 0))
-df['tp_price'] = np.where(df['buy'] == 1, df['curbot'] + 0.75 * df['ATR'], np.where((df['buy'] == 0) & (df['trade_active'] == 1), df['tp_price'].shift(1), 99999))
+    # Trail activation status
+    df.loc[i, 'trail_activated'] = 1 if df.loc[i, 'High'] >= df.loc[i-1, 'trail_activation_price'] and \
+    df.loc[i, 'buy'] != 1 and \
+    df.loc[i, 'trade_active'] == 1 else\
+    0 if (df.loc[i-1, 'sell'] == 1) else\
+    df.loc[i-1, 'trail_activated']
 
-# Update the 'trade_active' column based on the 'buy' and 'sell' signals
-# df.loc[df['buy'] == 1, 'trade_active'] = 1  # Set 'trade_active' to 1 when 'buy' is 1
-# df['trade_active'] = df['trade_active'].ffill()  # Forward-fill the 'trade_active' values
-# df.loc[df['sell'] == 1, 'trade_active'] = 0  # Reset 'trade_active' to 0 when 'sell' is 1
+    # Trail activation price
+    df.loc[i, 'trail_activation_price'] = df.loc[i, 'curtop'] - 0.95 * df.loc[i, 'ATR'] if df.loc[i, 'buy'] == 1 else \
+    1.002 * df.loc[i-1, 'trail_activation_p rice'] if (df.loc[i, 'trade_active'] == 1) & (df.loc[i, 'trail_activated'] == 1) & (df.loc[i, 'High'] >= 1.002 * df.loc[i-1, 'trail_activation_price']) else \
+    df.loc[i-1, 'trail_activation_price'] if (df.loc[i, 'trade_active'] == 1) else \
+    99999
+    
+    # Trail stop loss price
+    df.loc[i, 'trail_sl_price'] = df.loc[i, 'curtop'] - 1.05 * df.loc[i, 'ATR'] if df.loc[i, 'buy'] == 1 else \
+    df.loc[i-1, 'trail_sl_price'] + 0.002 * df.loc[i-1, 'trail_activation_price'] if (df.loc[i, 'trade_active'] == 1) & (df.loc[i, 'trail_activated'] == 1) & (df.loc[i, 'High'] >= 1.002 * df.loc[i-1, 'trail_activation_price']) else \
+    df.loc[i-1, 'trail_sl_price'] if (df.loc[i, 'trade_active'] == 1) else \
+    0  
 
-df['trail_activated'] = np.where(
-    (df['High'] >= df['trail_activation_price']) &
-    (df['buy'] != 1) &
-    (df['trade_active']== 1),
-    1,
-    0
-)
+    # SL hit
+    df.loc[i,'sl_hit'] = 1 if df.loc[i, 'trade_active'] == 1 and df.loc[i, 'buy'] != 1 and df.loc[i, 'Low'] <= df.loc[i,'sl_price'] else 0
 
-df['trail_activation_price'] = \
-np.where((df['buy'] == 1), df['curtop'] - 0.95 * df['ATR'],
-    np.where((df['trade_active'] == 1) & (df['trail_activated'] == 0), df['trail_activation_price'].shift(1),
-        np.where((df['trade_active'] == 1) & (df['trail_activated'] == 1) & (df['High'] >= 1.002 * df['trail_activation_price']), 1.002 * df['trail_activation_price'], 
-            99999
-        )
-    )
-)   
+    # TP hit
+    df.loc[i, 'tp_hit'] = 1 if df.loc[i, 'trade_active'] == 1 and df.loc[i, 'buy'] != 1 and df.loc[i, 'High'] >= df.loc[i, 'tp_price'] else 0
 
-df['trail_sl_price'] = \
-np.where(df['buy'] == 1, df['curtop'] - 1.05 * df['ATR'],
-    np.where((df['trade_active'] == 1) & (df['trail_activated'] == 0), df['trail_sl_price'].shift(1),
-        np.where((df['trade_active'] == 1) & (df['trail_activated'] == 1) & (df['High'] >= 1.002 * df['trail_activation_price']), df['trail_sl_price'] + 0.002 * df['trail_activation_price'], 
-        0
-        )
-    )
-)  
+    # Trail SL hit
+    df.loc[i, 'trail_sl_hit'] = 1 if df.loc[i, 'trade_active'] == 1 and df.loc[i, 'buy'] != 1 and df.loc[i, 'trail_activated'] == 1 and df.loc[i, 'Low'] <= df.loc[i, 'trail_sl_price'] else 0
 
-df['sl_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['Low'] <= df['sl_price']), 1, 0)
-df['tp_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['High'] >= df['tp_price']), 1, 0)
-df['trail_sl_hit'] = np.where((df['trade_active'] == 1) & (df['buy'] != 1) & (df['trail_activated'] == 1) & (df['Low'] <= df['trail_sl_price']), 1, 0)
-df['day_end_reached'] = np.where((df.index.time >= pd.Timestamp('15:15').time()) & (df['trade_active'] == 1), 1, 0)
+    # Day end reached
+    df.loc[i, 'day_end_reached'] = 1 if df.loc[i, 'time'] >= pd.Timestamp('15:15').time() and df.loc[i, 'trade_active'] == 1 else 0
 
-df['sell'] = np.where((df['sl_hit'] == 1) | (df['tp_hit'] == 1) | (df['trail_sl_hit'] == 1) | (df['day_end_reached'] == 1), 1, 0)
-df['sell_price'] = np.where((df['sell'] == 1) & (df['sl_hit'] == 1), df['sl_price'],
-                    np.where((df['sell'] == 1) & (df['tp_hit'] == 1), df['tp_price'],
-                        np.where((df['sell'] == 1) & (df['trail_sl_hit'] == 1), df['trail_sl_price'],
-                            np.where((df['sell'] == 1) & (df['day_end_reached'] == 1), df['Close'], 0))))
+    # Sell signal calculation
+    df.loc[i,'sell'] = 1 if df.loc[i,'sl_hit'] == 1 or df.loc[i, 'tp_hit'] == 1 or df.loc[i, 'trail_sl_hit'] == 1 or df.loc[i, 'day_end_reached'] == 1 else 0
 
+    # Sell price calculation
+    df.loc[i,'sell_price'] = df.loc[i,'sl_price'] if df.loc[i,'sl_hit'] == 1 and df.loc[i, 'sell'] == 1 else \
+    df.loc[i, 'tp_price'] if df.loc[i, 'tp_hit'] == 1 and df.loc[i, 'sell'] == 1 else \
+    df.loc[i, 'trail_sl_price'] if df.loc[i, 'trail_sl_hit'] == 1  and df.loc[i, 'sell'] == 1 else \
+    df.loc[i, 'Close'] if df.loc[i, 'day_end_reached'] == 1 and df.loc[i, 'sell'] == 1 else 0
 
-# Reset 'trade_active' to 0 for all rows after the sell signal
-# sell_signal_rows = df.loc[df['sell'] == 1].index
-# df.loc[sell_signal_rows.shift(-1):, 'trade_active'] = 0
+# Exclude records in df where the number of rows per day is less than 360
+min_rows_per_day = 360
+df = df.groupby(df.date).filter(lambda x: len(x) >= min_rows_per_day)
 
 daily_df.to_csv('./data/daily_df.csv')
 df.to_csv('./data/df.csv')
