@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2 class="text-center mb-4">Backtesting Results</h2>
+        <form id="paramForm" class="mb-4">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="initialCapital" class="form-label">Initial Capital</label>
+                    <input type="number" class="form-control" id="initialCapital" name="initialCapital" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="margin" class="form-label">Margin</label>
+                    <input type="number" class="form-control" id="margin" name="margin" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="positionSize" class="form-label">Position Size</label>
+                    <input type="number" class="form-control" id="positionSize" name="positionSize" required>
+                </div>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary">Calculate Results</button>
+            </div>
+        </form>
+        <div id="results" class="mt-4">
+    		<div class="row">
+        		<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title">Total Profit/Loss</h5>
+                    				<p class="card-text display-6" id="totalProfitLoss"></p>
+                			</div>
+            			</div>
+        		</div>
+        		<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title">Win Rate</h5>
+                    				<p class="card-text display-6" id="winRate"></p>
+                			</div>
+            			</div>
+        		</div>
+        		<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title">Sharpe Ratio</h5>
+                    				<p class="card-text display-6" id="sharpeRatio"></p>
+                			</div>
+            			</div>
+        		</div>
+			<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title"># Trades</h5>
+                    				<p class="card-text display-6" id="numTrades"></p>
+                			</div>
+            			</div>
+        		</div>
+    		</div>
+	</div>
+    </div>
+</div>
+
+<script>
+document.getElementById('paramForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    fetch('/calculate_results', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('totalProfitLoss').textContent = data.totalProfitLoss;
+        document.getElementById('winRate').textContent = data.winRate;
+        document.getElementById('sharpeRatio').textContent = data.sharpeRatio;
+	document.getElementById('numTrades').textContent = data.numTrades;	
+        document.getElementById('results').style.display = 'block';
+    });
+});
+</script>
+{% endblock %}

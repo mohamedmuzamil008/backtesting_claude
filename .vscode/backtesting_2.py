@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 import os
 import pandas_ta as ta
+from pandas_ta.momentum import macd
 
-'''Custom Functions'''
+# '''Custom Functions'''
 def get_curtop_curbot(group):
     group = group.sort_index()  # Sort the group by datetime
     group['curtop'] = group['High'].cummax()
@@ -137,7 +138,6 @@ def calculate_initial_balance(group):
 
     return group
 
-
 # Get the current working directory
 current_dir = os.getcwd()
 
@@ -196,8 +196,16 @@ daily_df['ATR'] = ta.atr(high=daily_df['High'], low=daily_df['Low'], close=daily
 # Create a new column 'prevday_high' in the daily_df DataFrame
 daily_df['prevday_high'] = daily_df['High'].shift(1)
 
+# Create a MACD line and signal in the daily_df DataFrame
+#daily_df['macd'], daily_df['macdsignal'], daily_df['macdhist'] = macd(close=daily_df['Close'], fast=12, slow=26, signal=9)
+
+daily_df.ta.macd(fast=12, slow=26, signal=9, min_periods=None, append=True)
+
+daily_df['uptrend'] = (daily_df['MACD_12_26_9'].shift(1) >= daily_df['MACDs_12_26_9'].shift(1)) & (daily_df['MACD_12_26_9'].shift(1) > daily_df['MACD_12_26_9'].shift(2))
+
+
 # Create a ATR in df based on joins from the daily_df on datetime
-df = df.merge(daily_df[['datetime', 'ATR', 'prevday_high']], left_on='date', right_on='datetime', how='left')
+df = df.merge(daily_df[['datetime', 'ATR', 'prevday_high', 'uptrend']], left_on='date', right_on='datetime', how='left')
 df.drop(['datetime_y'], axis=1, inplace=True)
 df.rename(columns={'datetime_x': 'datetime'}, inplace=True)
 
@@ -238,6 +246,9 @@ df['trail_sl_price'] = 0
 df['buy'] = 0
 df['sell'] = 0
 
+# Exclude if its not uptrend
+df = df[df['uptrend'] == True].reset_index(drop=True)
+print(df.shape)
 
 for i in range(1, len(df)):
     
@@ -321,8 +332,88 @@ for i in range(1, len(df)):
 min_rows_per_day = 360
 df = df.groupby(df.date).filter(lambda x: len(x) >= min_rows_per_day)
 
-daily_df.to_csv('./data/daily_df.csv')
-df.to_csv('./data/df.csv')
+daily_df.to_csv('./data/daily_df.csv', index=False)
+df.to_csv('./data/df.csv', index=False)
+
+# Backtesting logic starts here...
+
+df = pd.read_csv('./data/df.csv')
+
+# Keep records only when the trade is active
+df = df[(df['buy'] == 1) | (df['sell'] == 1)].reset_index(drop=True)
+
+# Define the initial capital
+df['cum_pl'] = 100000.0
+df['pl'] = 0.0
+df['num_trades'] = 0
+df['shares_purchased'] = 0
+
+# Margin availability
+margin = 5
+
+# Define the position size
+position_sizing_pct = 0.3
+
+for i in range(len(df)):
+    
+    try:
+        # Number of shares purchased
+        df.loc[i, 'shares_purchased'] = np.where((df.loc[i, 'buy'] == 1), round((min(df.loc[i, 'cum_pl'], 100000) * margin * position_sizing_pct) / df.loc[i, 'buy_price'], 0),
+                df.loc[i-1, 'shares_purchased']
+        )
+    except KeyError:
+        df.loc[i, 'shares_purchased'] = round((min(df.loc[i, 'cum_pl'], 100000) * margin * position_sizing_pct) / df.loc[i, 'buy_price'], 0)  # Set a default value of 0
+
+
+    # Calculate the profit/loss per trade
+    df.loc[i, 'pl'] = np.where((df.loc[i, 'sell'] == 1), (df.loc[i, 'sell_price'] - df.loc[i, 'buy_price']) * df.loc[i, 'shares_purchased'], 0)
+
+    # Cumulative profit/loss calculation
+    try:
+        df.loc[i, 'cum_pl'] = np.where((df.loc[i, 'sell'] == 1), df.loc[i-1, 'cum_pl'] + df.loc[i, 'pl'], 
+                                       np.where(i == 0, 100000, df[i-1, 'cum_pl'])
+        )
+    except KeyError:
+        if i > 0:
+            df.loc[i, 'cum_pl'] = np.where((df.loc[i, 'sell'] == 1), df.loc[i-1, 'cum_pl'] + df.loc[i, 'pl'], df.loc[i-1, 'cum_pl'])
+        else:
+            df.loc[i, 'cum_pl'] = 100000 
+
+    # Calculate the number of trades
+    try:
+        df.loc[i, 'num_trades'] = np.where((df.loc[i,'sell'] == 1), df.loc[i-1, 'num_trades'] + 1,
+                                                df.loc[i-1, 'num_trades']
+        )
+    except KeyError:
+            df.loc[i, 'num_trades'] = 0  # Set a default value of 0
+    
+    # Calculate number of winning trades
+    try: 
+        df.loc[i, 'num_winning_trades'] = np.where((df.loc[i,'sell'] == 1) & (df.loc[i, 'pl'] > 0), df.loc[i-1, 'num_winning_trades'] + 1,
+                                                df.loc[i-1, 'num_winning_trades']
+        )
+    except KeyError:
+        df.loc[i, 'num_winning_trades'] = 0  # Set a default value of 0
+
+    # Calculate number of losing trades
+    try:
+        df.loc[i, 'num_losing_trades'] = np.where((df.loc[i,'sell'] == 1) & (df.loc[i, 'pl'] <= 0), df.loc[i-1, 'num_losing_trades'] + 1,
+                                                df.loc[i-1, 'num_losing_trades']
+        )
+    except KeyError:
+        df.loc[i, 'num_losing_trades'] = 0  # Set a default value of 0
+
+    # Calculate the Accuracy
+    try:
+        df.loc[i, 'accuracy'] = np.where((df.loc[i, 'sell'] == 1) & (df.loc[i, 'num_trades'] > 0), df.loc[i, 'num_winning_trades'] / df.loc[i, 'num_trades'],
+                                        df.loc[i-1, 'accuracy']
+        )
+
+    except KeyError:
+        df.loc[i, 'accuracy'] = 0  # Set a default value of 0
+
+df.to_csv('./data/df_backtest.csv', index=False)
+
 
 
 
