@@ -1,35 +1,53 @@
 {% extends "base.html" %}
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <h2 class="text-center mb-4">Backtesting Results</h2>
+		<div class="d-flex justify-content-between align-items-center mb-4" style="max-width: 400px; margin: 0 auto;">
+			<span><strong>Strategy:</strong> {{ strategy_name }}</span>
+			<span><strong>Stock:</strong> {{ file_name }}</span>
+		</div>
         <form id="paramForm" class="mb-4">
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label for="initialCapital" class="form-label">Initial Capital</label>
-                    <input type="number" class="form-control" id="initialCapital" name="initialCapital" required>
+                    <input type="number" class="form-control" id="initialCapital" name="initialCapital" value="100000" required>
                 </div>
                 <div class="col-md-4 mb-3">
                     <label for="margin" class="form-label">Margin</label>
-                    <input type="number" class="form-control" id="margin" name="margin" required>
+                    <input type="number" class="form-control" id="margin" name="margin" value="5" required>
                 </div>
                 <div class="col-md-4 mb-3">
                     <label for="positionSize" class="form-label">Position Size</label>
-                    <input type="number" class="form-control" id="positionSize" name="positionSize" required>
+                    <input type="number" class="form-control" id="positionSize" name="positionSize" value="30" required>
                 </div>
             </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary">Calculate Results</button>
             </div>
         </form>
+		<button id="downloadResultsPNG" class="btn btn-sm btn-outline-primary">
+			<i class="fas fa-download"></i> Download PNG
+		</button>
         <div id="results" class="mt-4">
     		<div class="row">
         		<div class="col-md-4 mb-3">
             			<div class="card text-center">
                 			<div class="card-body">
                     				<h5 class="card-title">Total Profit/Loss</h5>
-                    				<p class="card-text display-6" id="totalProfitLoss"></p>
+                    				<p class="card-text display-8" id="totalProfitLoss"></p>
+                			</div>
+            			</div>
+        		</div>
+				<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title">Avg Profit</h5>
+                    				<p class="card-text display-8" id="avgProfit"></p>
                 			</div>
             			</div>
         		</div>
@@ -37,7 +55,15 @@
             			<div class="card text-center">
                 			<div class="card-body">
                     				<h5 class="card-title">Win Rate</h5>
-                    				<p class="card-text display-6" id="winRate"></p>
+                    				<p class="card-text display-8" id="winRate"></p>
+                			</div>
+            			</div>
+        		</div>
+				<div class="col-md-4 mb-3">
+            			<div class="card text-center">
+                			<div class="card-body">
+                    				<h5 class="card-title">Max DD</h5>
+                    				<p class="card-text display-8" id="maxDrawdown"></p>
                 			</div>
             			</div>
         		</div>
@@ -45,24 +71,71 @@
             			<div class="card text-center">
                 			<div class="card-body">
                     				<h5 class="card-title">Sharpe Ratio</h5>
-                    				<p class="card-text display-6" id="sharpeRatio"></p>
+                    				<p class="card-text display-8" id="sharpeRatio"></p>
                 			</div>
             			</div>
         		</div>
-			<div class="col-md-4 mb-3">
+				<div class="col-md-4 mb-3">
             			<div class="card text-center">
                 			<div class="card-body">
                     				<h5 class="card-title"># Trades</h5>
-                    				<p class="card-text display-6" id="numTrades"></p>
+                    				<p class="card-text display-8" id="numTrades"></p>
                 			</div>
             			</div>
         		</div>
     		</div>
-	</div>
+		</div>
     </div>
 </div>
 
+<div class="row mt-4">
+    <div class="col-md-6">
+		<div class="card">
+			<div class="card-header">
+				<h4 class="mb-0">Cumulative P&L</h4>
+			</div>
+			<div class="card-body">
+				<div style="height: 250px;">
+					<canvas id="cumulativePLChart"></canvas>
+				</div>
+			</div>
+		</div>
+	</div>
+    <div class="col-md-6">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Trade Log</h4>
+            <button id="downloadTradeLog" class="btn btn-sm btn-outline-primary">Download CSV</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="tradeLogTable" class="table table-striped table-hover table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>P&L</th>
+							<th>Cum P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Trade log data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+
 <script>
+
+let tradeLogData = [];
 document.getElementById('paramForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const formData = new FormData(this);
@@ -72,12 +145,108 @@ document.getElementById('paramForm').addEventListener('submit', function(e) {
     })
     .then(response => response.json())
     .then(data => {
+		// Update KPIs
         document.getElementById('totalProfitLoss').textContent = data.totalProfitLoss;
         document.getElementById('winRate').textContent = data.winRate;
         document.getElementById('sharpeRatio').textContent = data.sharpeRatio;
-	document.getElementById('numTrades').textContent = data.numTrades;	
+		document.getElementById('numTrades').textContent = data.numTrades;
+		document.getElementById('maxDrawdown').textContent = data.maxDrawdown;
+		document.getElementById('avgProfit').textContent = data.avgProfit;		
         document.getElementById('results').style.display = 'block';
+		
+		// Populate trade log table
+		tradeLogData = data.tradeLog;
+        const tableBody = document.getElementById('tradeLogTable').getElementsByTagName('tbody')[0];
+        tableBody.innerHTML = '';
+        tradeLogData.forEach(trade => {
+            const row = tableBody.insertRow();
+            row.insertCell(0).textContent = trade.date;
+            row.insertCell(1).textContent = trade.entry;
+            row.insertCell(2).textContent = trade.exit;
+            row.insertCell(3).textContent = trade.pnl;
+			row.insertCell(4).textContent = trade.cum_pnl;
+			
+        });
+		
+		// Create cumulative P&L chart
+        const ctx = document.getElementById('cumulativePLChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.cumulativePL.dates,
+                datasets: [{
+                    label: 'Cumulative P&L',
+                    data: data.cumulativePL.values,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+					borderColor: 'rgb(75, 192, 192)',
+					backgroundColor: 'rgba(75, 192, 192, 0.2)',
+					borderWidth: 2,
+					pointRadius: 3,
+					pointHoverRadius: 5,
+					fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+				maintainAspectRatio: true,
+				plugins: {
+					legend: {
+						display: true,
+						position: 'top',
+					},
+					tooltip: {
+						mode: 'index',
+						intersect: false,
+					}
+				},
+                scales: {
+                    y: {
+                        beginAtZero: false,
+						title: {
+							display: true,
+							text: 'Cumulative P&L'
+						},
+						ticks: {
+							callback: function(value, index, values) {
+								return 'Rs.' + value.toLocaleString();
+							}
+						}
+                    }
+                }
+            }
+        });
     });
 });
+
+function downloadCSV(data, filename) {
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + data.map(row => Object.values(row).join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+document.getElementById('downloadTradeLog').addEventListener('click', function() {
+    downloadCSV(tradeLogData, 'trade_log.csv');
+});
+
+document.getElementById('downloadResultsPNG').addEventListener('click', function() {
+    html2canvas(document.body).then(function(canvas) {
+        var link = document.createElement('a');
+        link.download = 'backtesting_results.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+});
+
+
 </script>
+
+
+
 {% endblock %}
