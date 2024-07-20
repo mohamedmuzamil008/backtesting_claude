@@ -172,7 +172,7 @@ def process_data():
         df = df.reset_index(level=0, drop=True)
         df = df.reset_index(drop=False)
 
-        yield "data:" + json.dumps({"progress": 40, "status": "Calculating Buy and Sell signals"}) + "\n\n"
+        yield "data:" + json.dumps({"progress": 70, "status": "Calculating Buy and Sell signals"}) + "\n\n"
         
         df['datetime'] = pd.to_datetime(df['datetime'])
         df['time'] = df['datetime'].dt.time
