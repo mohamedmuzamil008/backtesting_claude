@@ -4,6 +4,7 @@
 
 
 {% block content %}
+<div id="results-container">
 <div class="row justify-content-center">
     <div class="col-md-8">
         <h2 class="text-center mb-4">Backtesting Results</h2>
@@ -128,6 +129,7 @@
     </div>
 </div>
 </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
@@ -236,15 +238,17 @@ document.getElementById('downloadTradeLog').addEventListener('click', function()
 });
 
 document.getElementById('downloadResultsPNG').addEventListener('click', function() {
-    html2canvas(document.body).then(function(canvas) {
+    var element = document.getElementById('results-container'); // Wrap your results in a container with this ID
+    html2canvas(element, {
+        windowHeight: element.scrollHeight,
+        y: element.getBoundingClientRect().top
+    }).then(function(canvas) {
         var link = document.createElement('a');
         link.download = 'backtesting_results.png';
         link.href = canvas.toDataURL();
         link.click();
     });
 });
-
-
 </script>
 
 

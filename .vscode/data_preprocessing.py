@@ -3,7 +3,7 @@ import pandas as pd
 def data_preprocessing(df):
 
     # Convert Date and Time columns to datetime format
-    df['Date'] = pd.to_datetime(df['Date'], format='%d-%m-%Y')
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
 
     df['Time'] = pd.to_datetime(df['Time'], format='%H:%M:%S').dt.time
 
