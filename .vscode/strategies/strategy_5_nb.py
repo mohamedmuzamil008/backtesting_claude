@@ -1,9 +1,10 @@
 import numpy as np
 import numba as nb
 import os
+from flask import current_app
 
 @nb.jit(nopython=True)
-def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, atr, high, close):
+def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, atr, high, close, entry_param, sl_param, target_param, trail_activation_param, trail_sl_param):
     n = len(openconviction_5)
     buy = np.zeros(n, dtype=np.int32)
     sell = np.zeros(n, dtype=np.int32)
@@ -29,7 +30,7 @@ def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, 
 
         # Buy signal calculation
         buy[i] = 1 if (openconviction_5[i] == 7 and 
-                       ibrange_atr[i] >= 1.25 and 
+                       ibrange_atr[i] >= entry_param[i] and 
                        low[i] == curbot[i] and 
                        time[i] > 33540 and time[i] <= 36840 and 
                        trades_taken_today[i] == 0 and 
@@ -41,15 +42,15 @@ def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, 
                           1 if (buy[i] == 0) and (trade_active[i-1] == 1) else 0))
 
         # Buy price calculation
-        buy_price[i] = curtop[i] - 1.25 * atr[i] if buy[i] == 1 else (
+        buy_price[i] = curtop[i] - entry_param[i] * atr[i] if buy[i] == 1 else (
                        buy_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
 
         # Stop loss price calculation
-        sl_price[i] = curtop[i] - 1.4 * atr[i] if buy[i] == 1 else (
+        sl_price[i] = curtop[i] - sl_param[i] * atr[i] if buy[i] == 1 else (
                             sl_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 0)
         
         # Target price calculation
-        tp_price[i] = curbot[i] + 0.75 * atr[i] if buy[i] == 1 else (
+        tp_price[i] = curtop[i] - target_param[i] * atr[i] if buy[i] == 1 else (
                                 tp_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
         
         # Trail activation status
@@ -57,12 +58,12 @@ def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, 
                              0 if sell[i-1] == 1 else trail_activated[i-1])
         
         # Trail activation price
-        trail_activation_price[i] = curtop[i] - 0.95 * atr[i] if buy[i] == 1 else (
+        trail_activation_price[i] = curtop[i] - trail_activation_param[i] * atr[i] if buy[i] == 1 else (
         1.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
         trail_activation_price[i-1] if (trade_active[i] == 1) else 99999))
 
         # Trail stop loss price
-        trail_sl_price[i] = curtop[i] - 1.05 * atr[i] if buy[i] == 1 else (
+        trail_sl_price[i] = curtop[i] - trail_sl_param[i] * atr[i] if buy[i] == 1 else (
         trail_sl_price[i-1] + 0.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
         trail_sl_price[i-1] if (trade_active[i] == 1) else 0))
 
@@ -94,15 +95,28 @@ def calculate_signals(openconviction_5, ibrange_atr, low, curbot, time, curtop, 
 def generate_strategy5_signals(df, daily_df, results_dir, file_name):
 
     # Exclude if its not uptrend
-    df = df[df['uptrend'] == True].reset_index(drop=True)
+    # df = df[df['uptrend'] == True].reset_index(drop=True)
 
     df['time_seconds'] = df['time'].apply(lambda x: x.hour * 3600 + x.minute * 60 + x.second)
+
+    df['entry_param'] = np.where(df['uptrend'] == True, 1.4, 1.8)
+    df['sl_param'] = np.where(df['uptrend'] == True, 1.7, 2.1)
+    df['target_param'] = np.where(df['uptrend'] == True, 0.95, 1.2)
+    df['trail_activation_param'] = np.where(df['uptrend'] == True, 1.05, 1.4)
+    df['trail_sl_param'] = np.where(df['uptrend'] == True, 1.15, 1.5)
+    # entry_param = 1.35
+    # sl_param = 1.65
+    # target_param = 1.05
+    # trail_activation_param = 1.05
+    # trail_sl_param = 1.15
 
     # Use the function
     trades_taken_today, buy, trade_active, buy_price, sl_price, tp_price, trail_activated, trail_activation_price, trail_sl_price, \
             sl_hit, tp_hit, trail_sl_hit, day_end_reached, sell, sell_price = calculate_signals(
         df['openconviction_5'].values, df['ibrange/atr'].values, df['Low'].values, df['curbot'].values,
-        df['time_seconds'].values, df['curtop'].values, df['ATR'].values, df['High'].values, df['Close'].values
+        df['time_seconds'].values, df['curtop'].values, df['ATR'].values, df['High'].values, df['Close'].values,
+        df['entry_param'].values, df['sl_param'].values, df['target_param'].values, df['trail_activation_param'].values,
+        df['trail_sl_param'].values
     )
 
     # Assign results back to DataFrame
@@ -131,3 +145,5 @@ def generate_strategy5_signals(df, daily_df, results_dir, file_name):
     daily_df.to_csv(daily_processed_file, index=False)
     processed_file = os.path.join(results_dir, f"df_{file_name}.csv")
     df.to_csv(processed_file, index=False)
+
+    current_app.result_df = df

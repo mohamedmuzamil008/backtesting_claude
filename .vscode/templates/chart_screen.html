@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>OHLC Chart for {{ date }}</h2>
+<div id="ohlcChart"></div>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+	var data = {{ ohlc_data|tojson }};
+
+	var trace_candlestick = {
+		x: data.map(d => d.timestamp),
+		close: data.map(d => d.close),
+		high: data.map(d => d.high),
+		low: data.map(d => d.low),
+		open: data.map(d => d.open),
+		type: 'candlestick',
+		xaxis: 'x',
+		yaxis: 'y'
+	};
+
+	var trace_buy_price = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.buy_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'Buy Price',
+		line: {color: 'blue'}
+	};
+
+	var trace_sl_price = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.sl_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'SL Price',
+		line: {color: 'red'}
+	};
+
+	var trace_trail_activation = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.trail_activation_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'Trail Activation',
+		line: {color: 'lime'}
+	};
+
+	var trace_trail_sl = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.trail_sl_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'Trail SL',
+		line: {color: 'orange'}
+	};
+
+	var trace_target = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.target_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'Target Price',
+		line: {color: 'purple'}
+	};
+	
+	var trace_sell_price = {
+		x: data.map(d => d.timestamp),
+		y: data.map(d => d.sell_price),
+		type: 'scatter',
+		mode: 'lines',
+		name: 'Sell Price',
+		line: {color: 'green'}
+	};
+	
+	var trace_buy_signals = {
+		x: data.filter(d => d.buy === 1).map(d => d.timestamp),
+		y: data.filter(d => d.buy === 1).map(d => d.low),
+		type: 'scatter',
+		mode: 'markers',
+		name: 'Buy Signal',
+		marker: {
+			symbol: 'triangle-up',
+			size: 10,
+			color: 'green'
+		}
+	};
+
+	var trace_sell_signals = {
+		x: data.filter(d => d.sell === 1).map(d => d.timestamp),
+		y: data.filter(d => d.sell === 1).map(d => d.high),
+		type: 'scatter',
+		mode: 'markers',
+		name: 'Sell Signal',
+		marker: {
+			symbol: 'triangle-down',
+			size: 10,
+			color: 'red'
+		}
+	};
+
+	
+	// Calculate min and max values from OHLC data
+	var minY = Math.min(...data.map(d => Math.min(d.low, d.open, d.close)));
+	var maxY = Math.max(...data.map(d => Math.max(d.high, d.open, d.close)));
+
+	// Add some padding to the range
+	var padding = (maxY - minY) * 0.1;
+	minY -= padding;
+	maxY += padding;
+
+	var layout = {
+		title: 'OHLC Candlestick Chart with Strategy Lines',
+		dragmode: 'zoom',
+		showlegend: true,
+		xaxis: {
+			rangeslider: {visible: false},
+			title: 'Date'
+		},
+		yaxis: {
+			title: 'Price',
+			range: [minY, maxY]
+		}
+	};
+
+	Plotly.newPlot('ohlcChart', [trace_candlestick, trace_buy_price, trace_sl_price, trace_trail_activation, trace_trail_sl, trace_target, trace_sell_price, trace_buy_signals, trace_sell_signals], layout);
+
+</script>
+{% endblock %}

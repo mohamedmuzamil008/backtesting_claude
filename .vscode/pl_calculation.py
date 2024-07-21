@@ -101,7 +101,8 @@ def calculate_pl(df, initial_capital, margin=5, position_sizing_pct=30, commissi
             "entry": round(df_sell.loc[i, 'buy_price'],2),
             "exit": round(df_sell.loc[i,'sell_price'],2),
             "pnl": round(df_sell.loc[i, 'pl'],2),
-            "cum_pnl": round(df_sell.loc[i, 'cum_pl'],2)
+            "cum_pnl": round(df_sell.loc[i, 'cum_pl'],2),
+            "uptrend": str(df_sell.loc[i, 'uptrend'])
         })
 
     cumulative_pl = {

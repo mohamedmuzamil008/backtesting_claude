@@ -1,7 +1,7 @@
 # Create a flask app to backtest a trading strategy
 
 # Flask app first input page where the user uploads a CSV file
-from flask import Flask, render_template, request, Response, redirect, url_for, stream_with_context, jsonify, session
+from flask import Flask, current_app, render_template, request, Response, redirect, url_for, stream_with_context, jsonify, session
 import os
 import json
 import pandas as pd
@@ -117,6 +117,20 @@ def calculate_initial_balance(group):
 
     return group
 
+def fetch_ohlc_data(date):
+
+    df = current_app.result_df
+
+    df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+    df['date'] = df['date'].astype(str)  
+
+    df['time'] = df['time'].astype(str)
+
+    df = df[df['date'] == date].reset_index(drop=True)    
+    print(df.shape)
+    ohlc_data = df[['Open', 'High', 'Low', 'Close', 'time', 'buy_price', 'sl_price', 'trail_activation_price', 'trail_sl_price', 'tp_price', 'sell_price', 'buy', 'sell']].rename(columns={'Open': 'open', 'High':'high', 'Low':'low', 'Close':'close', 'time':'timestamp', 'tp_price':'target_price'}).to_dict('records')
+
+    return ohlc_data
 
 app = Flask(__name__)
 app.secret_key = 'App$ecretKey@98765#'  
@@ -235,8 +249,10 @@ def calculate_results():
     latest_file = max([os.path.join(uploads_dir, f) for f in files], key=os.path.getmtime)
     file_name = latest_file.split('/')[-1].split('.')[0].split("\\")[-1]  
     results_dir = os.path.join(os.getcwd(), f"results\{file_name}")
-    processed_file = os.path.join(results_dir, f"df_{file_name}.csv")
-    df = pd.read_csv(processed_file)
+
+    df = current_app.result_df
+    df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+    df['date'] = df['date'].astype(str)    
 
     total_profit_loss, win_rate, sharpe_ratio, num_trades, max_dd, avg_profit, trade_log, cumulative_pl  = calculate_pl(df, initial_capital, margin, position_sizing_pct, commission, results_dir, file_name)
     
@@ -251,6 +267,12 @@ def calculate_results():
         'cumulativePL': cumulative_pl
 
     })
+
+@app.route('/chart/<date>')
+def chart_screen(date):
+    # Fetch OHLC data for the specified date
+    ohlc_data = fetch_ohlc_data(date)
+    return render_template('chart_screen.html', date=date, ohlc_data=ohlc_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
