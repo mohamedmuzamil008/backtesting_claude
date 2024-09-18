@@ -32,8 +32,8 @@ def calculate_signals(openconviction_5, ibrange_atr, sd_atr, volatility, multipl
         buy[i] = 1 if (openconviction_5[i] == 7 and 
                        low[i] <= curtop[i] - entry_param[i] and
                        uptrend[i] == True and 
-                       multiplier[i] >= 0.0022 and multiplier[i] <= 0.0070 and
-                       volatility[i] >= 0.012 and 
+                       #multiplier[i] >= 0.0022 and multiplier[i] <= 0.0070 and
+                       #volatility[i] >= 0.012 and 
                        low[i] == curbot[i] and 
                        time[i] > 33540 and time[i] <= 36840 and 
                        trades_taken_today[i] == 0 and 
@@ -45,28 +45,16 @@ def calculate_signals(openconviction_5, ibrange_atr, sd_atr, volatility, multipl
                           1 if (buy[i] == 0) and (trade_active[i-1] == 1) else 0))
 
         # Buy price calculation
-        # buy_price[i] = curtop[i] - entry_param[i] * atr[i] if buy[i] == 1 else (
-        #               buy_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
-        # buy_price[i] = close[i] if buy[i] == 1 else (
-        #                 buy_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
         buy_price[i] = curtop[i] - entry_param[i] if buy[i] == 1 else (
                       buy_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
         
 
         # Stop loss price calculation
-        # sl_price[i] = curtop[i] - sl_param[i] * atr[i] if buy[i] == 1 else (
-        #                    sl_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 0)
-        # sl_price[i] = close[i] - sl_param[i] if buy[i] == 1 else (
-        #                     sl_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 0)
         sl_price[i] = curtop[i] - sl_param[i] if buy[i] == 1 else (
                             sl_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 0)
         
 
         # Target price calculation
-        # tp_price[i] = curtop[i] - target_param[i] * atr[i] if buy[i] == 1 else (
-        #                         tp_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
-        # tp_price[i] = close[i] + target_param[i] if buy[i] == 1 else (
-        #                         tp_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
         tp_price[i] = curtop[i] - target_param[i] if buy[i] == 1 else (
                                 tp_price[i-1] if (buy[i] == 0) and (trade_active[i] == 1) else 99999)
         
@@ -75,24 +63,12 @@ def calculate_signals(openconviction_5, ibrange_atr, sd_atr, volatility, multipl
                              0 if sell[i-1] == 1 else trail_activated[i-1])
         
         # Trail activation price
-        # trail_activation_price[i] = curtop[i] - trail_activation_param[i] * atr[i] if buy[i] == 1 else (
-        # 1.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
-        # trail_activation_price[i-1] if (trade_active[i] == 1) else 99999))
-        # trail_activation_price[i] = close[i] + trail_activation_param[i] if buy[i] == 1 else (
-        # 1.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
-        # trail_activation_price[i-1] if (trade_active[i] == 1) else 99999))
         trail_activation_price[i] = curtop[i] - trail_activation_param[i] if buy[i] == 1 else (
         1.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
         trail_activation_price[i-1] if (trade_active[i] == 1) else 99999))
         
 
         # Trail stop loss price
-        # trail_sl_price[i] = curtop[i] - trail_sl_param[i] * atr[i] if buy[i] == 1 else (
-        # trail_sl_price[i-1] + 0.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
-        # trail_sl_price[i-1] if (trade_active[i] == 1) else 0))
-        # trail_sl_price[i] = close[i] + trail_sl_param[i] if buy[i] == 1 else (
-        # trail_sl_price[i-1] + 0.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
-        # trail_sl_price[i-1] if (trade_active[i] == 1) else 0))
         trail_sl_price[i] = curtop[i] - trail_sl_param[i] if buy[i] == 1 else (
         trail_sl_price[i-1] + 0.002 * trail_activation_price[i-1] if (trade_active[i] == 1) and (trail_activated[i] == 1) and (high[i] >= 1.002 * trail_activation_price[i-1]) else (
         trail_sl_price[i-1] if (trade_active[i] == 1) else 0))
@@ -122,7 +98,7 @@ def calculate_signals(openconviction_5, ibrange_atr, sd_atr, volatility, multipl
     return trades_taken_today, buy, trade_active, buy_price, sl_price, tp_price, trail_activated, trail_activation_price, trail_sl_price, \
             sl_hit, tp_hit, trail_sl_hit, day_end_reached, sell, sell_price
 
-def generate_strategy5_signals(df, daily_df, results_dir, file_name):
+def generate_strategy5_original_signals(df, daily_df, results_dir, file_name):
 
     # Exclude if its not uptrend
     # df = df[df['uptrend'] == True].reset_index(drop=True)
@@ -130,17 +106,11 @@ def generate_strategy5_signals(df, daily_df, results_dir, file_name):
     df['time_seconds'] = df['time'].apply(lambda x: x.hour * 3600 + x.minute * 60 + x.second)
 
     
-    # df['entry_param'] = np.where(df['uptrend'] == True, df['ATR'] + ((1 + df['SD/ATR'])  * df['range_sd']), df['ATR'] + ((1.8 + df['SD/ATR'])  * df['range_sd']))
-    # df['sl_param'] = np.where(df['uptrend'] == True, df['entry_param'] + ((0.4 + df['SD/ATR']) * df['range_sd']), df['entry_param'] + ((0.4 + df['SD/ATR'])  * df['range_sd']))
-    # df['target_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((0.7 + df['SD/ATR'])  * df['range_sd']), df['entry_param'] - ((0.7 + df['SD/ATR'])  * df['range_sd']))
-    # df['trail_activation_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((0.5 + df['SD/ATR']) * df['range_sd']), df['entry_param'] - ((0.5 + df['SD/ATR']) * df['range_sd']))
-    # df['trail_sl_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((0.3 + df['SD/ATR']) * df['range_sd']), df['entry_param'] - ((0.3 + df['SD/ATR']) * df['range_sd']))
-    
-    df['entry_param'] = np.where(df['uptrend'] == True, df['ATR'] + ((0.6 * df['volatility'] * 100)  * df['range_sd']), df['ATR'] + ((1.8 + df['SD/ATR'])  * df['range_sd']))
-    df['sl_param'] = np.where(df['uptrend'] == True, df['entry_param'] + ((1 * df['volatility'] * 100) * df['range_sd']), df['entry_param'] + ((0.4 + df['SD/ATR'])  * df['range_sd']))
-    df['target_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((1 * df['volatility'] * 100)  * df['range_sd']), df['entry_param'] - ((0.7 + df['SD/ATR'])  * df['range_sd']))
-    df['trail_activation_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((1 * df['volatility'] * 100) * df['range_sd']), df['entry_param'] - ((0.5 + df['SD/ATR']) * df['range_sd']))
-    df['trail_sl_param'] = np.where(df['uptrend'] == True, df['entry_param'] - ((0.5 * df['volatility'] * 100) * df['range_sd']), df['entry_param'] - ((0.3 + df['SD/ATR']) * df['range_sd']))
+    df['entry_param'] = np.where(df['uptrend'] == True, 1.25 * df['ATR'], df['ATR'] + ((1.8 + df['SD/ATR'])  * df['range_sd']))
+    df['sl_param'] = np.where(df['uptrend'] == True, 1.4 * df['ATR'], df['entry_param'] + ((0.4 + df['SD/ATR'])  * df['range_sd']))
+    df['target_param'] = np.where(df['uptrend'] == True, df['entry_param'] - (0.3 * df['ATR']), df['entry_param'] - ((0.7 + df['SD/ATR'])  * df['range_sd']))
+    df['trail_activation_param'] = np.where(df['uptrend'] == True, df['entry_param'] - (0.5 * df['ATR']), df['entry_param'] - ((0.5 + df['SD/ATR']) * df['range_sd']))
+    df['trail_sl_param'] = np.where(df['uptrend'] == True, df['entry_param'] - (0.2 * df['ATR']), df['entry_param'] - ((0.3 + df['SD/ATR']) * df['range_sd']))
     
 
     # Use the function
